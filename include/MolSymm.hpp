@@ -10,6 +10,9 @@
 #include <array>
 #include <unordered_map>
 #include <string_view>
+#include <algorithm>
+#include <numeric>
+#include <utility>
 #include <stdexcept>
 
 #include <Eigen/Dense>
@@ -100,12 +103,12 @@ public:
     Eigen::MatrixXd coordinates; // 3 by natoms
     Eigen::VectorXi atomic_numbers;
     Eigen::VectorXd atomic_weights;
-
+public:
     Molecule(const std::string& ifilename="");
     void read(const std::string& ifilename);
     void read_xyz(const std::string& ifilename);
 
-    std::string detect_point_group() const;
+    std::string detect_point_group(double tol=1.E-4) const;
 
 };
 
