@@ -2,6 +2,7 @@
 
 std::string Molecule::detect_point_group(double tol) const {
     // quick return
+    if (natoms == 0) throw std::runtime_error("Error: you should load a molecule first.");
     if (natoms == 1) return "Kh";
     if (natoms == 2) return elements[0] == elements[1] ? "Dinfh" : "Cinfv";
 

@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <numeric>
 #include <utility>
+#include <cctype>
+#include <cstdio>
 #include <stdexcept>
 
 #include <Eigen/Dense>
@@ -107,6 +109,7 @@ public:
     Molecule(const std::string& ifilename="");
     void read(const std::string& ifilename);
     void read_xyz(const std::string& ifilename);
+    void read_gjf(const std::string& ifilename);
 
     std::string detect_point_group(double tol=1.E-4) const;
 
