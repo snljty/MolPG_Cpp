@@ -19,7 +19,8 @@ std::string Molecule::detect_point_group(double tol) const {
 
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigen_solver(moments_of_inertia_tensor);
     Eigen::Vector3d moments_of_inertia = eigen_solver.eigenvalues();
-    // Eigen::Matrix3d principal_axes = eigen_solver.eigenvectors();
+    Eigen::Matrix3d principal_axes = eigen_solver.eigenvectors();
+    coords_centered = principal_axes.transpose() * coords_centered; // rotate principal axes to x y z
 
     // detect SEA
     Eigen::MatrixXi atomic_numbers_to_compare = atomic_numbers.replicate(1, natoms);
@@ -34,7 +35,7 @@ std::string Molecule::detect_point_group(double tol) const {
         distance_to_compare = diff.colwise().norm().reshaped(natoms, natoms);
     }
 
-    // argsort !
+    // argsort
     Eigen::VectorXd sort_method(natoms);
     for (int iatom = 0; iatom < natoms; ++ iatom) {
         std::iota(sort_method.data(), sort_method.data() + natoms, 0);
@@ -88,20 +89,23 @@ std::string Molecule::detect_point_group(double tol) const {
     if (moments_of_inertia[0] <= tol && moments_of_inertia[2] - moments_of_inertia[1] <= tol) {
         // linear, I_A = 0, I_B = I_C
         // fmt::print("{:s}\n", "linear");
+        // Cinfv or Dinfh
         // only need to check symmetry center
 
         // coords_operated = - coords_centered;
         // return is_sym_okay() ? "Dinfh" : "Cinfv";
 
+        // the molecule is on axis x
+
         bool sym_okay = true;
         for (const std::vector<int>& SEA_group : SEAs) {
             if (SEA_group.size() == 2) {
-                if (((coords_centered.col(SEA_group[0]) + coords_centered.col(SEA_group[1])).array().abs() > tol).any()) {
+                if (std::abs(coords_centered(coord_x, SEA_group[0]) + coords_centered(coord_x, SEA_group[1])) / 2. > tol) {
                     sym_okay = false;
                     break;
                 }
             } else if (SEA_group.size() == 1) {
-                if ((coords_centered.col(SEA_group[0]).array().abs() > tol).any()) {
+                if (std::abs(coords_centered(coord_x, SEA_group[0])) > tol) {
                     sym_okay = false;
                     break;
                 }
