@@ -6,15 +6,15 @@ std::string Molecule::detect_point_group(double tol) const {
     if (natoms == 1) return "Kh";
     if (natoms == 2) return elements[0] == elements[1] ? "Dinfh" : "Cinfv";
 
-    Eigen::MatrixXd coords_centerized = coordinates.colwise() - coordinates.rowwise().mean();
+    Eigen::MatrixXd coords_centered = coordinates.colwise() - coordinates.rowwise().mean();
 
     Eigen::Matrix3d moments_of_inertia_tensor(Eigen::Matrix3d::Zero());
 
     // get moments of inertia
     for (int iatom = 0; iatom < natoms; ++ iatom) {
         moments_of_inertia_tensor += atomic_weights[iatom] * (
-            coords_centerized.col(iatom).transpose() * coords_centerized.col(iatom) * Eigen::Matrix3d::Identity() 
-          - coords_centerized.col(iatom) * coords_centerized.col(iatom).transpose());
+            coords_centered.col(iatom).transpose() * coords_centered.col(iatom) * Eigen::Matrix3d::Identity() 
+          - coords_centered.col(iatom) * coords_centered.col(iatom).transpose());
     }
 
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigen_solver(moments_of_inertia_tensor);
@@ -62,9 +62,54 @@ std::string Molecule::detect_point_group(double tol) const {
         }
     }
 
+    Eigen::MatrixXd coords_operated(coords_centered);
+
+    std::function<bool()> is_sym_okay = [&touched, &SEAs, &coords_centered, &coords_operated, tol]() {
+        std::fill(touched.begin(), touched.end(), false);
+        bool sym_okay = true;
+        for (const std::vector<int>& SEA_group : SEAs) {
+            for (int iatom : SEA_group) {
+                for (int jatom : SEA_group) {
+                    if (((coords_operated.col(iatom) - coords_centered.col(jatom)).array().abs() <= tol).all()) {
+                        touched[iatom] = true;
+                        break;
+                    }
+                }
+                if (!touched[iatom]) {
+                    sym_okay = false;
+                    break;
+                }
+            }
+            if (!sym_okay) break;
+        }
+        return sym_okay;
+    };
+
     if (moments_of_inertia[0] <= tol && moments_of_inertia[2] - moments_of_inertia[1] <= tol) {
         // linear, I_A = 0, I_B = I_C
-        fmt::print("{:s}\n", "linear");
+        // fmt::print("{:s}\n", "linear");
+        // only need to check symmetry center
+
+        // coords_operated = - coords_centered;
+        // return is_sym_okay() ? "Dinfh" : "Cinfv";
+
+        bool sym_okay = true;
+        for (const std::vector<int>& SEA_group : SEAs) {
+            if (SEA_group.size() == 2) {
+                if (((coords_centered.col(SEA_group[0]) + coords_centered.col(SEA_group[1])).array().abs() > tol).any()) {
+                    sym_okay = false;
+                    break;
+                }
+            } else if (SEA_group.size() == 1) {
+                if ((coords_centered.col(SEA_group[0]).array().abs() > tol).any()) {
+                    sym_okay = false;
+                    break;
+                }
+            } else {
+                throw std::runtime_error("Error: this should never happen.");
+            }
+        }
+        return sym_okay ? "Dinfh" : "Cinfv";
     } else if (moments_of_inertia[1] - moments_of_inertia[0] <= tol && moments_of_inertia[2] - moments_of_inertia[1] <= tol) {
         // more than one main-axes where n > 2, I_A = I_B = I_C, a.k.a. "spherial-like"
         fmt::print("{:s}\n", "spherial-like");

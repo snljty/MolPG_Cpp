@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <numeric>
 #include <utility>
+#include <functional>
 #include <cctype>
 #include <cstdio>
 #include <stdexcept>
