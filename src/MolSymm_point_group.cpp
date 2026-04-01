@@ -20,6 +20,7 @@ std::string Molecule::detect_point_group(double tol) const {
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigen_solver(moments_of_inertia_tensor);
     Eigen::Vector3d moments_of_inertia = eigen_solver.eigenvalues();
     Eigen::Matrix3d principal_axes = eigen_solver.eigenvectors();
+    if (principal_axes.determinant() < 0.) principal_axes.col(0) = - principal_axes.col(0);
     coords_centered = principal_axes.transpose() * coords_centered; // rotate principal axes to x y z
 
     // detect SEA
@@ -86,7 +87,8 @@ std::string Molecule::detect_point_group(double tol) const {
         return sym_okay;
     };
 
-    if (moments_of_inertia[0] <= tol && moments_of_inertia[2] - moments_of_inertia[1] <= tol) {
+    const double inertia_tol = tol * 2. * coords_centered.colwise().norm() * atomic_weights;
+    if (moments_of_inertia[0] <= inertia_tol && moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
         // linear, I_A = 0, I_B = I_C
         // fmt::print("{:s}\n", "linear");
         // Cinfv or Dinfh
@@ -114,14 +116,26 @@ std::string Molecule::detect_point_group(double tol) const {
             }
         }
         return sym_okay ? "Dinfh" : "Cinfv";
-    } else if (moments_of_inertia[1] - moments_of_inertia[0] <= tol && moments_of_inertia[2] - moments_of_inertia[1] <= tol) {
+
+    } else if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol && moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
         // more than one main-axes where n > 2, I_A = I_B = I_C, a.k.a. "spherial-like"
         fmt::print("{:s}\n", "spherial-like");
-    } else if (moments_of_inertia[1] - moments_of_inertia[0] <= tol || moments_of_inertia[2] - moments_of_inertia[1] <= tol) {
+
+    } else if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol || moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
         // symmetric, I_A = I_B \ne I_C or I_A \ne I_B = I_C
+        // Dnd for n>= 2, (Cn, Cnh, Cnv, Dn, Dnh) for n > 2, Cni for (n > 1 and n is odd, a.k.a. S(2n)) and Sn for 4 | n
         fmt::print("{:s}\n", "symmetric");
+
+        // rotate the principal axis corresponding to the unequivalent moment of inertia to x axis
+        if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol) {
+            Eigen::VectorXd swp = - coords_centered.row(coord_x);
+            coords_centered.row(coord_x) = coords_centered.row(coord_z);
+            coords_centered.row(coord_z) = swp;
+        }
+
     } else {
         // asymmetric, I_A \ne I_B \ne I_C
+        // D2, D2h, C2, C2h, C2v, C1, Ci, Cs
         fmt::print("{:s}\n", "asymmetric");
     }
 
