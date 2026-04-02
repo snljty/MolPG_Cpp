@@ -119,6 +119,7 @@ std::string Molecule::detect_point_group(double tol) const {
 
     } else if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol && moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
         // more than one main-axes where n > 2, I_A = I_B = I_C, a.k.a. "spherial-like"
+        // T, Td, Th, O, Oh, I, Ih
         fmt::print("{:s}\n", "spherial-like");
 
     } else if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol || moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
@@ -132,6 +133,54 @@ std::string Molecule::detect_point_group(double tol) const {
             coords_centered.row(coord_x) = coords_centered.row(coord_z);
             coords_centered.row(coord_z) = swp;
         }
+
+        // detect the main axis n>2
+        // first find the maximum possible Cn axis
+        int max_Cn_try = 2;
+        for (const std::vector<int>& SEA_group : SEAs) {
+            if (SEA_group.size() <= max_Cn_try) continue;
+            std::vector<double> compare_x(SEA_group.size());
+            for (int i = 0; i < SEA_group.size(); ++ i) {
+                compare_x[i] = coords_centered(coord_x, SEA_group[i]);
+            }
+            std::sort(compare_x.begin(), compare_x.end());
+            int max_Cn_try_current = 1;
+            std::vector<int> max_Cn_try_list;
+            for (int i = 1; i < compare_x.size(); ++ i) {
+                if (compare_x[i] - compare_x[i - 1] <= tol) {
+                    ++ max_Cn_try_current;
+                } else {
+                    max_Cn_try_list.push_back(max_Cn_try_current);
+                    max_Cn_try_current = 1;
+                }
+            }
+            max_Cn_try_list.push_back(max_Cn_try_current);
+            for (int max_Cn_try_current : max_Cn_try_list) {
+                if (max_Cn_try_current > max_Cn_try) max_Cn_try = max_Cn_try_current;
+            }
+        }
+
+        /*
+        max_Cn_try = 2
+        for SEA_group in SEAs:
+            if len(SEA_group) <= max_Cn_try: continue
+            # at least 2 elements in compare_x
+            compare_x = np.empty((len(SEA_group),), dtype=np.double)
+            for i, iatom in enumerate(SEA_group):
+                compare_x[i] = coords_centered[iatom, coord_x]
+            compare_x.sort()
+            max_Cn_try_current: int = 1
+            max_Cn_try_list: list = []
+            for i in range(1, len(compare_x)):
+                if compare_x[i] - compare_x[i - 1] <= tol:
+                    max_Cn_try_current += 1
+                else:
+                    max_Cn_try_list.append(max_Cn_try_current)
+                    max_Cn_try_current = 1
+            max_Cn_try_list.append(max_Cn_try_current)
+            for max_Cn_try_current in max_Cn_try_list:
+                if max_Cn_try_current > max_Cn_try: max_Cn_try = max_Cn_try_current
+        */
 
     } else {
         // asymmetric, I_A \ne I_B \ne I_C
