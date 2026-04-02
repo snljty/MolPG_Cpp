@@ -136,17 +136,83 @@ std::string Molecule::detect_point_group(double tol) const {
     } else {
         // asymmetric, I_A \ne I_B \ne I_C
         // D2, D2h, C2, C2h, C2v, C1, Ci, Cs
-        fmt::print("{:s}\n", "asymmetric");
-    }
+        // fmt::print("{:s}\n", "asymmetric");
+        bool has_x_C2, has_y_C2, has_z_C2, has_xOy_mirror, has_yOz_mirror, has_zOx_mirror, has_sym_center;
 
-    /*
-    for (const std::vector<int> &SEA_group : SEAs) {
-        for (int iatom : SEA_group) {
-            fmt::print(" {:d}", iatom + 1);
+        coords_operated.row(coord_x) =   coords_centered.row(coord_x);
+        coords_operated.row(coord_y) = - coords_centered.row(coord_y);
+        coords_operated.row(coord_z) = - coords_centered.row(coord_z);
+        has_x_C2 = is_sym_okay();
+        coords_operated.row(coord_x) = - coords_centered.row(coord_x);
+        coords_operated.row(coord_y) =   coords_centered.row(coord_y);
+        has_y_C2 = is_sym_okay();
+        coords_operated.row(coord_y) = - coords_centered.row(coord_y);
+        coords_operated.row(coord_z) =   coords_centered.row(coord_z);
+        has_z_C2 = is_sym_okay();
+
+        // there can only be 0, 1 or 3 C2 in this situation
+        if (has_x_C2 && has_y_C2 && has_z_C2) {
+            // D2, D2h
+            coords_operated.row(coord_x) =   coords_centered.row(coord_x);
+            has_zOx_mirror = is_sym_okay();
+            coords_operated.row(coord_x) = - coords_centered.row(coord_x);
+            coords_operated.row(coord_y) =   coords_centered.row(coord_y);
+            has_yOz_mirror = is_sym_okay();
+            coords_operated.row(coord_x) =   coords_centered.row(coord_x);
+            coords_operated.row(coord_z) = - coords_centered.row(coord_z);
+            has_xOy_mirror = is_sym_okay();
+            return has_xOy_mirror && has_yOz_mirror && has_zOx_mirror ? "D2h" : "D2";
         }
-        fmt::print("\n");
+
+        // C2, C2h, C2v, C1, Ci, Cs
+        // rotate the C2 axis to x axis
+        if (has_z_C2) {
+            Eigen::RowVectorXd swp = - coords_centered.row(coord_x);
+            coords_centered.row(coord_x) = coords_centered.row(coord_z);
+            coords_centered.row(coord_z) = swp;
+            has_z_C2 = false;
+            has_x_C2 = true;
+        } else if (has_y_C2) {
+            Eigen::RowVectorXd swp = - coords_centered.row(coord_y);
+            coords_centered.row(coord_y) = coords_centered.row(coord_x);
+            coords_centered.row(coord_x) = swp;
+            has_y_C2 = false;
+            has_x_C2 = true;
+        }
+
+        if (has_x_C2) {
+            // C2, C2h, C2v
+            coords_operated.row(coord_x) = - coords_centered.row(coord_x);
+            coords_operated.row(coord_y) =   coords_centered.row(coord_y);
+            coords_operated.row(coord_z) =   coords_centered.row(coord_z);
+            has_yOz_mirror = is_sym_okay();
+            if (has_yOz_mirror) return "C2h";
+            // C2, C2v
+            coords_operated.row(coord_x) =   coords_centered.row(coord_x);
+            coords_operated.row(coord_z) = - coords_centered.row(coord_z);
+            has_xOy_mirror = is_sym_okay();
+            return has_xOy_mirror ? "C2v" : "C2";
+        }
+
+        // C1, Ci, Cs
+        coords_operated.row(coord_x) =   coords_centered.row(coord_x);
+        coords_operated.row(coord_y) = - coords_centered.row(coord_y);
+        coords_operated.row(coord_z) =   coords_centered.row(coord_z);
+        has_zOx_mirror = is_sym_okay();
+        coords_operated.row(coord_x) = - coords_centered.row(coord_x);
+        coords_operated.row(coord_y) =   coords_centered.row(coord_y);
+        has_yOz_mirror = is_sym_okay();
+        coords_operated.row(coord_x) =   coords_centered.row(coord_x);
+        coords_operated.row(coord_z) = - coords_centered.row(coord_z);
+        has_xOy_mirror = is_sym_okay();
+        if (has_xOy_mirror || has_yOz_mirror || has_zOx_mirror) return "Cs";
+
+        // C1, Ci
+        coords_operated.row(coord_x) = - coords_centered.row(coord_x);
+        coords_operated.row(coord_y) = - coords_centered.row(coord_y);
+        has_sym_center = is_sym_okay();
+        return has_sym_center ? "Ci" : "C1";
     }
-    */
 
     return "Not detected.";
 }
