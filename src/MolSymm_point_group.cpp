@@ -22,6 +22,7 @@ std::string Molecule::detect_point_group(double tol) const {
     Eigen::Matrix3d principal_axes = eigen_solver.eigenvectors();
     if (principal_axes.determinant() < 0.) principal_axes.col(0) = - principal_axes.col(0);
     coords_centered = principal_axes.transpose() * coords_centered; // rotate principal axes to x y z
+    new_coordinates = coords_centered;
 
     // detect SEA
     Eigen::MatrixXi atomic_numbers_to_compare = atomic_numbers.replicate(1, natoms);
@@ -124,8 +125,8 @@ std::string Molecule::detect_point_group(double tol) const {
 
     } else if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol || moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
         // symmetric, I_A = I_B \ne I_C or I_A \ne I_B = I_C
-        // Dnd for n>= 2, (Cn, Cnh, Cnv, Dn, Dnh) for n > 2, Cni for (n > 1 and n is odd, a.k.a. S(2n)) and Sn for 4 | n
-        fmt::print("{:s}\n", "symmetric");
+        // Dnd for n >= 2, (Cn, Cnh, Cnv, Dn, Dnh) for n > 2, Cni for (n > 1 and n is odd, a.k.a. S(2n)) and Sn for 4 | n
+        // fmt::print("{:s}\n", "symmetric");
 
         // rotate the principal axis corresponding to the unequivalent moment of inertia to x axis
         if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol) {
@@ -134,7 +135,7 @@ std::string Molecule::detect_point_group(double tol) const {
             coords_centered.row(coord_z) = swp;
         }
 
-        // detect the main axis n>2
+        // detect the main axis n > 2
         // first find the maximum possible Cn axis
 
         int max_Cn_try = 2;
@@ -184,8 +185,8 @@ std::string Molecule::detect_point_group(double tol) const {
         Eigen::Vector2d axis_point;
         double axis_point_norm;
         Eigen::MatrixXd projection;
-        // first, check centers of two SEAs
         coords_operated.row(coord_x) = - coords_centered.row(coord_x);
+        // first, check centers of two SEAs
         for (const std::vector<int>& SEA_group : SEAs) {
             if (SEA_group.size() < 2) continue;
             for (int iatom : SEA_group) {
@@ -228,6 +229,7 @@ std::string Molecule::detect_point_group(double tol) const {
             Eigen::Matrix2d rot_mat;
             rot_mat << axis_point[0], axis_point[1], - axis_point[1], axis_point[0];
             coords_centered.bottomRows(2) = rot_mat * coords_centered.bottomRows(2);
+            new_coordinates = coords_centered;
         }
 
         // find sigma_h
@@ -236,7 +238,7 @@ std::string Molecule::detect_point_group(double tol) const {
         bool has_sigma_h = is_sym_okay();
 
         if (has_minor_C2) {
-            // Dn (n>2), Dnh (n>2), Dnd (n>=2)
+            // Dn (n > 2), Dnh (n > 2), Dnd (n >= 2)
             if (major_Cn == 2) return "D2d";
             if (has_sigma_h) return fmt::format("D{:d}h", major_Cn);
             // Dn, Dnd for n > 2
@@ -248,6 +250,92 @@ std::string Molecule::detect_point_group(double tol) const {
             coords_operated.bottomRows(2) = 2. * projection - coords_centered.bottomRows(2);
             bool has_sigma_d = is_sym_okay();
             return has_sigma_d ? fmt::format("D{:d}d", major_Cn) : fmt::format("D{:d}", major_Cn);
+        }
+
+        // (Cn, Cnv, Cnh) for n > 3, Cni for odd i > 1, S4n for positive n
+        coords_operated = - coords_centered;
+        bool has_sym_center = is_sym_okay();
+        if (has_sym_center) return major_Cn % 2 ? fmt::format("C{:d}i", major_Cn) : fmt::format("C{:d}h", major_Cn);
+        // Cnh for even n has been excluded now, odd n is still remained
+        if (has_sigma_h) {
+            if (major_Cn % 2) throw std::runtime_error("Error: this should never happen.");
+            return fmt::format("C{:d}h", major_Cn);
+        }
+        // (Cn, Cnv) for n > 3, S4n for positive n
+        // if there is S4n, there must be C2n
+        bool has_Sn = false;
+        int S_order;
+        for (int half_S_order_try = major_Cn; half_S_order_try > 0; -- half_S_order_try) {
+            if (major_Cn % half_S_order_try != 0) continue;
+            int S_order_try = half_S_order_try * 2;
+            rotate_around_x_by_n(S_order_try);
+            coords_operated.row(coord_x) = - coords_centered.row(coord_x);
+            if (is_sym_okay()) {
+                has_Sn = true;
+                S_order = S_order_try;
+                break;
+            }
+        }
+
+        if (has_Sn) {
+            if (S_order % 4 != 0) throw std::runtime_error("Error: this should never happen."); // C{S_order/2}h
+            return fmt::format("S{:d}", S_order);
+        }
+
+        // Cn or Cnv for n > 3
+        // find available sigma v
+        bool has_sigma_v = false;
+        Eigen::Vector2d mirror_point;
+        double mirror_point_norm;
+        coords_operated.row(coord_x) = coords_centered.row(coord_x);
+        // first, check centers of two SEAs
+        for (const std::vector<int>& SEA_group : SEAs) {
+            if (SEA_group.size() < 2) continue;
+            for (int iatom : SEA_group) {
+                for (int jatom : SEA_group) {
+                    if (iatom >= jatom) continue;
+                    mirror_point = (coords_centered.col(iatom).tail(2) + coords_centered.col(jatom).tail(2)) / 2.;
+                    mirror_point_norm = mirror_point.norm();
+                    if (mirror_point_norm <= tol) continue;
+                    mirror_point /= mirror_point_norm;
+                    // test a C2 through origin point and center of iatom and jatom
+                    projection = mirror_point * (mirror_point.transpose() * coords_centered.bottomRows(2));
+                    coords_operated.bottomRows(2) = 2. * projection - coords_centered.bottomRows(2);
+                    if (is_sym_okay()) {
+                        has_sigma_v = true;
+                        break;
+                    }
+                }
+                if (has_sigma_v) break;
+            }
+            if (has_sigma_v) break;
+        }
+
+        if (!has_sigma_v) {
+            // second, check C2 through each atom
+            for (int iatom = 0; iatom < natoms; ++ iatom) {
+                mirror_point_norm = coords_centered.col(iatom).tail(2).norm();
+                if (mirror_point_norm <= tol) continue;
+                mirror_point = coords_centered.col(iatom).tail(2) / mirror_point_norm;
+                // test a C2 through origin point and iatom
+                projection = mirror_point * (mirror_point.transpose() * coords_centered.bottomRows(2));
+                coords_operated.bottomRows(2) = 2. * projection - coords_centered.bottomRows(2);
+                if (is_sym_okay()) {
+                    has_sigma_v = true;
+                    break;
+                }
+            }
+        }
+
+        if (has_sigma_v) {
+            // rotate the found sigma_v to y axis
+            Eigen::Matrix2d rot_mat;
+            rot_mat << mirror_point[0], mirror_point[1], - mirror_point[1], mirror_point[0];
+            coords_centered.bottomRows(2) = rot_mat * coords_centered.bottomRows(2);
+            new_coordinates = coords_centered;
+            return fmt::format("C{:d}v", major_Cn);
+        } else {
+            return fmt::format("C{:d}", major_Cn);
         }
 
     } else {

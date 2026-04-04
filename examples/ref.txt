@@ -1,0 +1,68 @@
+18-crown-6
+ Point group: C3i
+acetylene
+ Point group: Dinfh
+benzene
+ Point group: D6h
+BF3
+ Point group: D3h
+biphenyl
+ Point group: D2 
+C2H2F2Cl2
+ Point group: Ci 
+C60
+ Point group: Ih 
+Ca2+THF6
+ Point group: T  
+CHFClBr
+ Point group: C1 
+chloroform
+ Point group: C3v
+cis_dichloroethylene
+ Point group: C2v
+Co_hexacyclen_III
+ Point group: C3i 
+Co_NO2_3_3-
+ Point group: Th 
+cubane
+ Point group: Oh 
+cyclohexane
+ Point group: D3d
+dichloropropadiene
+ Point group: C2 
+dodekaethyleneoctamine
+ Point group: O  
+ethylene
+ Point group: D2h
+hydrogen_cyanide
+ Point group: Cinfv
+hydrogen_peroxide
+ Point group: C2 
+naphthalene
+ Point group: D2h
+naphthol
+ Point group: Cs 
+nitrobenzene
+ Point group: C2v
+prismane
+ Point group: D3h
+propadiene
+ Point group: D2d
+Re2Cl8_2-
+ Point group: D4h 
+snub_dodecahedron
+ Point group: I  
+sulfate
+ Point group: Td 
+tetraazidocopperII
+ Point group: C4h
+tetrafluorocyclooctatetraene
+ Point group: S4 
+trans_dichloroethylene
+ Point group: C2h
+trifluorotriphenylene
+ Point group: C3h
+triphenylphosphine
+ Point group: C3 
+trisethylenediaminecobaltIII
+ Point group: D3 
