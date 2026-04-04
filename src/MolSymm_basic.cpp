@@ -35,6 +35,7 @@ void Molecule::resize() {
     coordinates.resize(ncoords, natoms);
     atomic_numbers.resize(natoms);
     atomic_weights.resize(natoms);
+    new_coordinates.resize(ncoords, natoms);
 }
 
 void Molecule::read_xyz(const std::string& ifilename) {
