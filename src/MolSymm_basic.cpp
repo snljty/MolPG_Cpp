@@ -1,6 +1,7 @@
 #include "MolSymm.hpp"
 
 Molecule::Molecule(const std::string& ifilename) : periodic_table(PeriodicTable::get_instance()) {
+    std::cout << std::fixed << std::setprecision(7);
     if (!ifilename.empty()) read(ifilename);
 }
 

@@ -190,8 +190,8 @@ std::string Molecule::detect_point_group(double tol) const {
             if (SEA_group.size() < 2) continue;
             for (int iatom : SEA_group) {
                 for (int jatom : SEA_group) {
-                    if (iatom == jatom) continue;
-                    axis_point = (coords_centered.col(iatom).tail(2) + coordinates.col(jatom).tail(2)) / 2.;
+                    if (iatom >= jatom) continue;
+                    axis_point = (coords_centered.col(iatom).tail(2) + coords_centered.col(jatom).tail(2)) / 2.;
                     axis_point_norm = axis_point.norm();
                     if (axis_point_norm <= tol) continue;
                     axis_point /= axis_point_norm;
@@ -230,7 +230,25 @@ std::string Molecule::detect_point_group(double tol) const {
             coords_centered.bottomRows(2) = rot_mat * coords_centered.bottomRows(2);
         }
 
-        fmt::print("{:s}\n", has_minor_C2 ? "true" : "false");
+        // find sigma_h
+        coords_operated.row(coord_x) = - coords_centered.row(coord_x);
+        coords_operated.bottomRows(2) = coords_centered.bottomRows(2);
+        bool has_sigma_h = is_sym_okay();
+
+        if (has_minor_C2) {
+            // Dn (n>2), Dnh (n>2), Dnd (n>=2)
+            if (major_Cn == 2) return "D2d";
+            if (has_sigma_h) return fmt::format("D{:d}h", major_Cn);
+            // Dn, Dnd for n > 2
+            // if exists sigma_d, it divides two minor C2. one minor C2 is already on axis y.
+            coords_operated.row(coord_x) = coords_centered.row(coord_x);
+            double angle = M_PI / static_cast<double>(major_Cn) / 2.;
+            axis_point << std::cos(angle), std::sin(angle);
+            projection = axis_point * (axis_point.transpose() * coords_centered.bottomRows(2));
+            coords_operated.bottomRows(2) = 2. * projection - coords_centered.bottomRows(2);
+            bool has_sigma_d = is_sym_okay();
+            return has_sigma_d ? fmt::format("D{:d}d", major_Cn) : fmt::format("D{:d}", major_Cn);
+        }
 
     } else {
         // asymmetric, I_A \ne I_B \ne I_C
