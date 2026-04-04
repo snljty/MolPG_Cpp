@@ -136,6 +136,7 @@ std::string Molecule::detect_point_group(double tol) const {
 
         // detect the main axis n>2
         // first find the maximum possible Cn axis
+
         int max_Cn_try = 2;
         for (const std::vector<int>& SEA_group : SEAs) {
             if (SEA_group.size() <= max_Cn_try) continue;
@@ -160,27 +161,76 @@ std::string Molecule::detect_point_group(double tol) const {
             }
         }
 
-        /*
-        max_Cn_try = 2
-        for SEA_group in SEAs:
-            if len(SEA_group) <= max_Cn_try: continue
-            # at least 2 elements in compare_x
-            compare_x = np.empty((len(SEA_group),), dtype=np.double)
-            for i, iatom in enumerate(SEA_group):
-                compare_x[i] = coords_centered[iatom, coord_x]
-            compare_x.sort()
-            max_Cn_try_current: int = 1
-            max_Cn_try_list: list = []
-            for i in range(1, len(compare_x)):
-                if compare_x[i] - compare_x[i - 1] <= tol:
-                    max_Cn_try_current += 1
-                else:
-                    max_Cn_try_list.append(max_Cn_try_current)
-                    max_Cn_try_current = 1
-            max_Cn_try_list.append(max_Cn_try_current)
-            for max_Cn_try_current in max_Cn_try_list:
-                if max_Cn_try_current > max_Cn_try: max_Cn_try = max_Cn_try_current
-        */
+        std::function<void(int)> rotate_around_x_by_n = [&coords_centered, &coords_operated](int n) {
+            const double angle = 2. * M_PI / static_cast<double>(n);
+            const double cos_theta = std::cos(angle);
+            const double sin_theta = std::sin(angle);
+            Eigen::Matrix2d rot_mat;
+            rot_mat << cos_theta, - sin_theta, sin_theta, cos_theta;
+            coords_operated.row(coord_x) = coords_centered.row(coord_x);
+            coords_operated.bottomRows(2).noalias() = rot_mat * coords_centered.bottomRows(2);
+        };
+
+        // find the major Cn
+        int major_Cn;
+        for (major_Cn = max_Cn_try; major_Cn > 1; -- major_Cn) {
+            rotate_around_x_by_n(major_Cn);
+            if (is_sym_okay()) break;
+        }
+        if (major_Cn == 1) throw std::runtime_error("Error: this should never happen.");
+
+        // find available C2
+        bool has_minor_C2 = false;
+        Eigen::Vector2d axis_point;
+        double axis_point_norm;
+        Eigen::MatrixXd projection;
+        // first, check centers of two SEAs
+        coords_operated.row(coord_x) = - coords_centered.row(coord_x);
+        for (const std::vector<int>& SEA_group : SEAs) {
+            if (SEA_group.size() < 2) continue;
+            for (int iatom : SEA_group) {
+                for (int jatom : SEA_group) {
+                    if (iatom == jatom) continue;
+                    axis_point = (coords_centered.col(iatom).tail(2) + coordinates.col(jatom).tail(2)) / 2.;
+                    axis_point_norm = axis_point.norm();
+                    if (axis_point_norm <= tol) continue;
+                    axis_point /= axis_point_norm;
+                    // test a C2 through origin point and center of iatom and jatom
+                    projection = axis_point * (axis_point.transpose() * coords_centered.bottomRows(2));
+                    coords_operated.bottomRows(2) = 2. * projection - coords_centered.bottomRows(2);
+                    if (is_sym_okay()) {
+                        has_minor_C2 = true;
+                        break;
+                    }
+                }
+                if (has_minor_C2) break;
+            }
+            if (has_minor_C2) break;
+        }
+
+        if (!has_minor_C2) {
+            // second, check C2 through each atom
+            for (int iatom = 0; iatom < natoms; ++ iatom) {
+                axis_point_norm = coords_centered.col(iatom).tail(2).norm();
+                if (axis_point_norm <= tol) continue;
+                axis_point = coords_centered.col(iatom).tail(2) / axis_point_norm;
+                // test a C2 through origin point and iatom
+                projection = axis_point * (axis_point.transpose() * coords_centered.bottomRows(2));
+                coords_operated.bottomRows(2) = 2. * projection - coords_centered.bottomRows(2);
+                if (is_sym_okay()) {
+                    has_minor_C2 = true;
+                    break;
+                }
+            }
+        }
+
+        if (has_minor_C2) {
+            Eigen::Matrix2d rot_mat;
+            rot_mat << axis_point[0], axis_point[1], - axis_point[1], axis_point[0];
+            coords_centered.bottomRows(2) = rot_mat * coords_centered.bottomRows(2);
+        }
+
+        fmt::print("{:s}\n", has_minor_C2 ? "true" : "false");
 
     } else {
         // asymmetric, I_A \ne I_B \ne I_C

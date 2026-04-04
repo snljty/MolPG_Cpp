@@ -17,6 +17,10 @@
 #include <iomanip>
 #include <cctype>
 #include <cstdio>
+#include <cmath>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846264
+#endif // M_PI
 #include <stdexcept>
 
 #include <Eigen/Dense>
@@ -101,17 +105,22 @@ class Molecule {
 private:
     void resize();
     const PeriodicTable& periodic_table;
-public:
+
     int natoms;
     std::vector<std::string> elements;
-    Eigen::MatrixXd coordinates; // 3 by natoms
+    Eigen::MatrixXd coordinates; // ncoords by natoms
     Eigen::VectorXi atomic_numbers;
     Eigen::VectorXd atomic_weights;
+    mutable Eigen::MatrixXd new_coordinates;
 public:
     Molecule(const std::string& ifilename="");
     void read(const std::string& ifilename);
+    void write(const std::string& ofilename) const;
     void read_xyz(const std::string& ifilename);
     void read_gjf(const std::string& ifilename);
+    void write_xyz(const std::string& ofilename) const;
+    void write_gjf(const std::string& ofilename) const;
+    void use_new_coordinates();
 
     std::string detect_point_group(double tol=1.E-4) const;
 
