@@ -30,6 +30,8 @@ cyclohexane
  Point group: D3d
 dichloropropadiene
  Point group: C2 
+dodecahedrane
+ Point group: Ih 
 dodekaethyleneoctamine
  Point group: O  
 ethylene

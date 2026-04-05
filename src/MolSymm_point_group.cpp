@@ -264,31 +264,31 @@ std::string Molecule::detect_point_group(double tol) const {
         // (Cn, Cnv, Cnh) for n > 3, Cni for odd i > 1, S4n for positive n
         coords_operated = - coords_centered;
         bool has_sym_center = is_sym_okay();
-        if (has_sym_center) return major_Cn % 2 ? fmt::format("C{:d}i", major_Cn) : fmt::format("C{:d}h", major_Cn);
-        // Cnh for even n has been excluded now, odd n is still remained
-        if (has_sigma_h) {
-            if (major_Cn % 2) throw std::runtime_error("Error: this should never happen.");
-            return fmt::format("C{:d}h", major_Cn);
-        }
-        // (Cn, Cnv) for n > 3, S4n for positive n
-        // if there is S4n, there must be C2n
-        bool has_Sn = false;
-        int S_order;
-        for (int half_S_order_try = major_Cn; half_S_order_try > 0; -- half_S_order_try) {
-            if (major_Cn % half_S_order_try != 0) continue;
-            int S_order_try = half_S_order_try * 2;
-            rotate_around_x_by_n(S_order_try);
-            coords_operated.row(coord_x) = - coords_centered.row(coord_x);
-            if (is_sym_okay()) {
-                has_Sn = true;
-                S_order = S_order_try;
-                break;
+        // S{4n+2} = C{2n+1} + i (C{2n+1}i), S{2n+1} = C{2n+1} + sigma_h (C{2n+1}h)
+        // if there is S4n, there must be C2n, and S4n does not contain i or sigma_h
+        if (major_Cn % 2 != 0) {
+            if (has_sym_center and has_sigma_h) throw std::runtime_error("Error: this should never happen.");
+            if (has_sym_center) return fmt::format("C{:d}i", major_Cn);
+            if (has_sigma_h) return fmt::format("C{:d}h", major_Cn); // only odd Cnh here
+        } else {
+            if (has_sigma_h) {
+                if (!has_sym_center) throw std::runtime_error("Error: this should never happen.");
+                return fmt::format("C{:d}h", major_Cn); // only even Cnh here
             }
-        }
-
-        if (has_Sn) {
-            if (S_order % 4 != 0) throw std::runtime_error("Error: this should never happen."); // C{S_order/2}h
-            return fmt::format("S{:d}", S_order);
+            // if major_Cn is n, then the maximum S, if any, must be S{2n} or Sn.
+            // if major_Cn is even, then if the maximum S is Sn, then:
+            // 1. if n = 4k, then S{4k} only has C{2k}, this is a paradox.
+            // 2. if n = 4k+2, then S{4k+2} = C{2k+1} + i, however C{4k+2} has C2, and C2 + i generates sigma_h, 
+            // but C{even} + sigma_h has been discussed above, hence here we only need to check S{2n}, and since 
+            // n is even here, that is a S{4m} point group if there is S{2n}.
+            const int S_order = major_Cn * 2;
+            rotate_around_x_by_n(S_order);
+            coords_operated.row(coord_x) = - coords_centered.row(coord_x);
+            bool has_Sn = is_sym_okay();
+            if (has_Sn) {
+                if (S_order % 4 != 0) throw std::runtime_error("Error: this should never happen.");
+                return fmt::format("S{:d}", S_order);
+            }
         }
 
         // Cn or Cnv for n > 3
