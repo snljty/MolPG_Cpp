@@ -128,9 +128,9 @@ std::string Molecule::detect_point_group(double tol) const {
         return sym_okay ? "Dinfh" : "Cinfv";
 
     } else if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol && moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
-        // more than one main-axes where n > 2, I_A = I_B = I_C, a.k.a. "spherial-like"
+        // more than one main-axes where n > 2, I_A = I_B = I_C, a.k.a. "spherical-like"
         // T, Td, Th, O, Oh, I, Ih
-        fmt::print("{:s}\n", "spherial-like");
+        fmt::print("{:s}\n", "spherical-like");
 
     } else if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol || moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
         // symmetric, I_A = I_B \ne I_C or I_A \ne I_B = I_C
