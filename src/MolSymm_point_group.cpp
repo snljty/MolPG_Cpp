@@ -130,7 +130,168 @@ std::string Molecule::detect_point_group(double tol) const {
     } else if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol && moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
         // more than one main-axes where n > 2, I_A = I_B = I_C, a.k.a. "spherical-like"
         // T, Td, Th, O, Oh, I, Ih
-        fmt::print("{:s}\n", "spherical-like");
+        // fmt::print("{:s}\n", "spherical-like");
+
+        std::function<void(const Eigen::Vector3d&)> rotate_half_around_axis = 
+        [&coords_centered, &coords_operated](const Eigen::Vector3d& axis) {
+            // assume axis is already normalized
+            // \cos\pi = -1, \sin\pi = 0
+            // R = \begin{bmatrix}
+            // \cos\theta + (1-\cos\theta){n_x}^2 & (1-\cos\theta)n_xn_y-\sin\theta n_z & (1-\cos\theta)n_xn_z+\sin\theta n_y \\
+            // (1-\cos\theta)n_yn_x+\sin\theta n_z & \cos\theta + (1-\cos\theta){n_y}^2 & (1-\cos\theta)n_yn_z-\sin\theta n_x \\
+            // (1-\cos\theta)n_zn_x-\sin\theta n_y & (1-\cos\theta)n_zn_y+\sin\theta n_x & \cos\theta + (1-\cos\theta){n_z}^2 \\
+            // \end{bmatrix}
+            Eigen::Matrix3d rot_mat = 2. * axis * axis.transpose() - Eigen::Matrix3d::Identity();
+            coords_operated = rot_mat * coords_centered;
+        };
+
+        std::function<void(const Eigen::Vector3d&)> rotate_quarter_around_axis = 
+        [&coords_centered, &coords_operated](const Eigen::Vector3d& axis) {
+            // assume axis is already normalized
+            // \cos\frac\pi2 = 0, \sin\frac\pi2 = 1
+            Eigen::Matrix3d cross_mat;
+            cross_mat << 0., - axis[coord_z], axis[coord_y], 
+                         axis[coord_z], 0., - axis[coord_x], 
+                         - axis[coord_y], axis[coord_x], 0.;
+            Eigen::Matrix3d rot_mat = axis * axis.transpose() + cross_mat;
+            coords_operated = rot_mat * coords_centered;
+        };
+
+        std::function<void(const Eigen::Vector3d&)> flip_against_plane = 
+        [&coords_centered, &coords_operated](const Eigen::Vector3d& normal_axis) {
+            // assume normal_axis is already normalized
+            Eigen::MatrixXd projection = normal_axis * (normal_axis.transpose() * coords_centered);
+            coords_operated = coords_centered - 2. * projection;
+        };
+
+        // T series have 3 C2, O series have 6 individual C2 and 3 C4, I series have 15 C2
+
+        Eigen::MatrixXd all_C2(ncoords, 15);
+        int num_C2_found = 0;
+        Eigen::Vector3d axis_point;
+        double axis_point_norm;
+
+        // first, check C2 through center of two SEAs
+        for (const std::vector<int>& SEA_group : SEAs) {
+            if (SEA_group.size() < 2) continue;
+            for (int iatom : SEA_group) {
+                for (int jatom : SEA_group) {
+                    if (iatom >= jatom) continue;
+                    axis_point = (coords_centered.col(iatom) + coords_centered.col(jatom)) / 2.;
+                    axis_point_norm = axis_point.norm();
+                    if (axis_point_norm <= tol) continue;
+                    axis_point /= axis_point_norm;
+                    bool already_found = false;
+                    for (int C2_index = 0; C2_index < num_C2_found; ++ C2_index) {
+                        if ((axis_point + all_C2.col(C2_index)).norm() <= tol || 
+                            (axis_point - all_C2.col(C2_index)).norm() <= tol) {
+                            already_found = true;
+                            break;
+                        }
+                    }
+                    if (!already_found) {
+                        rotate_half_around_axis(axis_point);
+                        if (is_sym_okay()) {
+                            if (num_C2_found >= 15) throw std::runtime_error("Error: this should never happen.");
+                            all_C2.col(num_C2_found) = axis_point;
+                            ++ num_C2_found;
+                        }
+                    }
+                }
+            }
+        }
+
+        // second, check C2 through each atom
+        for (int iatom = 0; iatom > natoms; ++ iatom) {
+            axis_point_norm = coords_centered.col(iatom).norm();
+            if (axis_point_norm <= tol) continue;
+            axis_point = coords_centered.col(iatom) / axis_point_norm;
+            bool already_found = false;
+            for (int C2_index = 0; C2_index < num_C2_found; ++ C2_index) {
+                if ((axis_point + all_C2.col(C2_index)).norm() <= tol || 
+                    (axis_point - all_C2.col(C2_index)).norm() <= tol) {
+                    already_found = true;
+                    break;
+                }
+            }
+            if (!already_found) {
+                rotate_half_around_axis(axis_point);
+                if (is_sym_okay()) {
+                    if (num_C2_found >= 15) throw std::runtime_error("Error: this should never happen.");
+                    all_C2.col(num_C2_found) = axis_point;
+                    ++ num_C2_found;
+                }
+            }
+        }
+
+        if (num_C2_found == 3) {
+            // T, Td, Th
+            flip_against_plane(all_C2.col(0));
+            bool has_sigma_h = is_sym_okay();
+            Eigen::Vector3d mirror_point = (all_C2.col(0) + all_C2.col(1)) / M_SQRT2;
+            flip_against_plane(mirror_point);
+            bool has_sigma_d = is_sym_okay();
+            Eigen::Matrix3d rot_mat = all_C2.leftCols(ncoords).transpose();
+            if (rot_mat.determinant() < 0.) rot_mat.row(coord_x) = - rot_mat.row(coord_x);
+            coords_centered = rot_mat * coords_centered;
+            new_coordinates = coords_centered;
+            return has_sigma_h ? "Th" : has_sigma_d ? "Td" : "T";
+        } else if (num_C2_found == 9) {
+            // O, Oh
+            Eigen::Vector3i C4_index;
+            int num_C4_found = 0;
+            for (int C2_index = 0; C2_index < 9; ++ C2_index) {
+                rotate_quarter_around_axis(all_C2.col(C2_index));
+                if (is_sym_okay()) {
+                    C4_index[num_C4_found] = C2_index;
+                    ++ num_C4_found;
+                }
+            }
+            if (num_C4_found != 3) throw std::runtime_error("Error: this should never happen.");
+            flip_against_plane(all_C2.col(C4_index[0]));
+            bool has_sigma_h = is_sym_okay();
+            Eigen::Matrix3d rot_mat;
+            for (int i = 0; i < ncoords; ++ i) {
+                rot_mat.row(i) = all_C2.col(C4_index[i]).transpose();
+            }
+            if (rot_mat.determinant() < 0.) rot_mat.row(coord_x) = - rot_mat.row(coord_x);
+            coords_centered = rot_mat * coords_centered;
+            new_coordinates = coords_centered;
+            return has_sigma_h ? "Oh" : "O";
+        } else if (num_C2_found == 15) {
+            // I, Ih
+            flip_against_plane(all_C2.col(0));
+            bool has_sigma_h = is_sym_okay();
+            Eigen::Vector3i C2_use_index(Eigen::Vector3i::Zero());
+            bool found_second_orthogonal_C2 = false;
+            for (C2_use_index[1] = 1; C2_use_index[1] < 15; ++ C2_use_index[1]) {
+                if (std::abs(all_C2.col(C2_use_index[1]).transpose() * all_C2.col(0)) <= tol) {
+                    found_second_orthogonal_C2 = true;
+                    break;
+                }
+            }
+            if (!found_second_orthogonal_C2) throw std::runtime_error("Error: this should never happen.");
+            bool found_third_orthogonal_C2 = false;
+            for (C2_use_index[2] = 1; C2_use_index[2] < 15; ++ C2_use_index[2]) {
+                if (C2_use_index[2] == C2_use_index[1]) continue;
+                if (std::abs(all_C2.col(C2_use_index[2]).transpose() * all_C2.col(0)) <= tol && 
+                    std::abs(all_C2.col(C2_use_index[2]).transpose() * all_C2.col(C2_use_index[1])) <= tol) {
+                    found_third_orthogonal_C2 = true;
+                    break;
+                }
+            }
+            if (!found_third_orthogonal_C2) throw std::runtime_error("Error: this should never happen.");
+            Eigen::Matrix3d rot_mat;
+            for (int i = 0; i < ncoords; ++ i) {
+                rot_mat.row(i) = all_C2.col(C2_use_index[i]);
+            }
+            if (rot_mat.determinant() < 0.) rot_mat.row(coord_x) = - rot_mat.row(coord_x);
+            coords_centered = rot_mat * coords_centered;
+            new_coordinates = coords_centered;
+            return has_sigma_h ? "Ih" : "I";
+        } else {
+            throw std::runtime_error("Error: this should never happen.");
+        }
 
     } else if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol || moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
         // symmetric, I_A = I_B \ne I_C or I_A \ne I_B = I_C
