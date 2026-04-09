@@ -164,6 +164,27 @@ std::string Molecule::detect_point_group(double tol) const {
             coords_operated = coords_centered - 2. * projection;
         };
 
+        std::function<void(const Eigen::Vector3d&, int, int)> rotate_around_axis = 
+        [&coords_centered, &coords_operated](const Eigen::Vector3d& axis, int order, int times) {
+            // assume axis is already normalized
+            double theta = 2. * M_PI / static_cast<double>(order) * static_cast<double>(times);
+            double cos_theta = std::cos(theta);
+            double sin_theta = std::sin(theta);
+            Eigen::Matrix3d cross_mat;
+            cross_mat << 0., - axis[coord_z], axis[coord_y], 
+                         axis[coord_z], 0., - axis[coord_x], 
+                         - axis[coord_y], axis[coord_x], 0.;
+            Eigen::Matrix3d rot_mat = Eigen::Matrix3d::Identity() + cross_mat * sin_theta + \
+                (1. - cos_theta) * (axis * axis.transpose() - Eigen::Matrix3d::Identity());
+            coords_operated = rot_mat * coords_centered;
+        };
+
+        std::function<void(const Eigen::Vector3d&, int)> rotate_around_axis_once = 
+        [&rotate_around_axis](const Eigen::Vector3d& axis, int order) {
+            // assume axis is already normalized
+            rotate_around_axis(axis, order, 1);
+        };
+
         // T series have 3 C2, O series have 6 individual C2 and 3 C4, I series have 15 C2
 
         Eigen::MatrixXd all_C2(ncoords, 15);
@@ -235,7 +256,25 @@ std::string Molecule::detect_point_group(double tol) const {
             if (rot_mat.determinant() < 0.) rot_mat.row(coord_x) = - rot_mat.row(coord_x);
             coords_centered = rot_mat * coords_centered;
             new_coordinates = coords_centered;
+            // aligned coordinates:
+            // 3 C2(1):
+            //     [1, 0, 0]
+            //     [0, 1, 0]
+            //     [0, 0, 1]
+            // 4 C3(1,2):
+            //     [1,  1,  1] / sqrt(3)
+            //     [1,  1, -1] / sqrt(3)
+            //     [1, -1,  1] / sqrt(3)
+            //     [1, -1, -1] / sqrt(3)
+            //
+            // 1 i                  (Th)
+            // 3 sigma_h            (Th): perpendicular to C2
+            // 4 S6(1,5)= - I3(1,5) (Th): superposition with C3
+            //
+            // 6 sigma_d             (Td): divides any two C2s,  contains the third C2
+            // 3 S4(1,3) = - I4(1,3) (Td): superposition with C2
             return has_sigma_h ? "Th" : has_sigma_d ? "Td" : "T";
+
         } else if (num_C2_found == 9) {
             // O, Oh
             Eigen::Vector3i C4_index;
@@ -257,15 +296,39 @@ std::string Molecule::detect_point_group(double tol) const {
             if (rot_mat.determinant() < 0.) rot_mat.row(coord_x) = - rot_mat.row(coord_x);
             coords_centered = rot_mat * coords_centered;
             new_coordinates = coords_centered;
+            // aligned coordinates:
+            // 6 C2(1):
+            //     [ 0,  1,  1] / sqrt(2)
+            //     [ 0,  1, -1] / sqrt(2)
+            //     [ 1,  0,  1] / sqrt(2)
+            //     [-1,  0,  1] / sqrt(2)
+            //     [ 1,  1,  0] / sqrt(2)
+            //     [ 1, -1,  0] / sqrt(2)
+            // 4 C3(1,2):
+            //     [1,  1,  1] / sqrt(3)
+            //     [1,  1, -1] / sqrt(3)
+            //     [1, -1,  1] / sqrt(3)
+            //     [1, -1, -1] / sqrt(3)
+            // 3 C4(1,2,3) (C4(2) = C2(1), not the C2(1) above):
+            //     [1, 0, 0]
+            //     [0, 1, 0]
+            //     [0, 0, 1]
+            //
+            // 1 i                 (Oh)
+            // 6 sigma_d           (Oh): divides any two C4s, contains the third C4
+            // 4 S6(1,5) = I3(1,5) (Oh): superposition with C3
+            // 3 sigma_h           (Oh): perpendicular to C4
+            // 3 S4(1,3) = I4(1,3) (Oh): superposition with C4
             return has_sigma_h ? "Oh" : "O";
+
         } else if (num_C2_found == 15) {
             // I, Ih
             flip_against_plane(all_C2.col(0));
-            bool has_sigma_h = is_sym_okay();
+            bool has_sigma = is_sym_okay();
             Eigen::Vector3i C2_use_index(Eigen::Vector3i::Zero());
             bool found_second_orthogonal_C2 = false;
             for (C2_use_index[1] = 1; C2_use_index[1] < 15; ++ C2_use_index[1]) {
-                if (std::abs(all_C2.col(C2_use_index[1]).transpose() * all_C2.col(0)) <= tol) {
+                if (std::abs(all_C2.col(C2_use_index[1]).transpose() * all_C2.col(0)) <= 3. * tol) {
                     found_second_orthogonal_C2 = true;
                     break;
                 }
@@ -274,8 +337,8 @@ std::string Molecule::detect_point_group(double tol) const {
             bool found_third_orthogonal_C2 = false;
             for (C2_use_index[2] = 1; C2_use_index[2] < 15; ++ C2_use_index[2]) {
                 if (C2_use_index[2] == C2_use_index[1]) continue;
-                if (std::abs(all_C2.col(C2_use_index[2]).transpose() * all_C2.col(0)) <= tol && 
-                    std::abs(all_C2.col(C2_use_index[2]).transpose() * all_C2.col(C2_use_index[1])) <= tol) {
+                if (std::abs(all_C2.col(C2_use_index[2]).transpose() * all_C2.col(0)) <= 3. * tol && 
+                    std::abs(all_C2.col(C2_use_index[2]).transpose() * all_C2.col(C2_use_index[1])) <= 3. * tol) {
                     found_third_orthogonal_C2 = true;
                     break;
                 }
@@ -288,7 +351,23 @@ std::string Molecule::detect_point_group(double tol) const {
             if (rot_mat.determinant() < 0.) rot_mat.row(coord_x) = - rot_mat.row(coord_x);
             coords_centered = rot_mat * coords_centered;
             new_coordinates = coords_centered;
-            return has_sigma_h ? "Ih" : "I";
+            // for fullerene C60 (soccer-ball-like), there are 12 pentagons and 20 hexagons. 
+            // each pentagon has 5 hexagon neighbor, 
+            // each hexagon has alternate distributing three pentagons and three hexagons.
+            // each C5 passes through centers of two opposite pentagons.
+            // each C3 passes through centers of two opposite hexagons.
+            // each C2 passes through the midpoints of two opposite common edges between a hexagonal rings and its adjacent hexagonal rings.
+            // let \phi=\frac{\sqrt{5}+1}{2}, \varphi=\frac{\sqrt{5}-1}{2}
+            // aligned coordinates:
+            // 15 C2(1) : x, y, z axes, [1, \pm\phi, \pm\varphi] / 2 and their cyclic permutations
+            // 10 C3(1,2) : [1, \pm(1+\phi), 0] / sqrt(3\phi+3) and their cyclic permutations and [1, \pm1, \pm1] / sqrt(3)
+            // 6  C5(1,2,3,4) : [1, 0, \pm\phi] / sqrt(\phi+2) and theri cyclic permutations
+            // i                            (Ih)
+            // 6 S10(1,3,7,9) = I5(7,1,9,3) (Ih) : superposition with C5
+            // 10 S6(1,5) = I3(1,5)         (Ih) : superposition with C3
+            // 15 sigma                     (Ih) : perpendicular to C2
+            return has_sigma ? "Ih" : "I";
+
         } else {
             throw std::runtime_error("Error: this should never happen.");
         }
