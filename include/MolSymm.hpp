@@ -126,7 +126,7 @@ public:
     void write_gjf(const std::string& ofilename) const;
     void use_new_coordinates();
 
-    std::string detect_point_group(double tol=1.E-4) const;
+    std::pair<std::string, int> detect_point_group(double tol=1.E-4) const;
 
 };
 

@@ -48,7 +48,7 @@ nitrobenzene
  Point group: C2v
 prismane
  Point group: D3h
-propadiene
+allene
  Point group: D2d
 Re2Cl8_2-
  Point group: D4h 
