@@ -2,69 +2,75 @@
  Point group: C3i
 acetylene
  Point group: Dinfh
+allene
+ Point group: D2d
 benzene
  Point group: D6h
 BF3
  Point group: D3h
 biphenyl
- Point group: D2 
+ Point group: D2
 C2H2F2Cl2
- Point group: Ci 
+ Point group: Ci
 C60
- Point group: Ih 
+ Point group: Ih
 Ca2+THF6
- Point group: T  
+ Point group: T
 CHFClBr
- Point group: C1 
+ Point group: C1
 chloroform
  Point group: C3v
 cis_dichloroethylene
  Point group: C2v
+CO
+ Point group: Cinfv
 Co_hexacyclen_III
- Point group: C3i 
+ Point group: C3i
 Co_NO2_3_3-
- Point group: Th 
+ Point group: Th
 cubane
- Point group: Oh 
+ Point group: Oh
 cyclohexane
  Point group: D3d
 dichloropropadiene
- Point group: C2 
+ Point group: C2
 dodecahedrane
- Point group: Ih 
+ Point group: Ih
 dodekaethyleneoctamine
- Point group: O  
+ Point group: O
 ethylene
  Point group: D2h
+He
+ Point group: Kh
 hydrogen_cyanide
  Point group: Cinfv
 hydrogen_peroxide
- Point group: C2 
+ Point group: C2
+N2
+ Point group: Dinfh
 naphthalene
  Point group: D2h
 naphthol
- Point group: Cs 
+ Point group: Cs
 nitrobenzene
  Point group: C2v
 prismane
  Point group: D3h
-allene
- Point group: D2d
 Re2Cl8_2-
- Point group: D4h 
+ Point group: D4h
 snub_dodecahedron
- Point group: I  
+ Point group: I
 sulfate
- Point group: Td 
+ Point group: Td
 tetraazidocopperII
  Point group: C4h
 tetrafluorocyclooctatetraene
- Point group: S4 
+ Point group: S4
 trans_dichloroethylene
  Point group: C2h
 trifluorotriphenylene
  Point group: C3h
 triphenylphosphine
- Point group: C3 
+ Point group: C3
 trisethylenediaminecobaltIII
- Point group: D3 
+ Point group: D3

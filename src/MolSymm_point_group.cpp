@@ -1,6 +1,16 @@
 #include "MolSymm.hpp"
 
 std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
+    // align method of new_coordinates:
+    // the geometry center is located at origin point of Cartesian axes.
+    // for geometry with no more than one rotation axis Cn with n > 2, 
+    // the major axis (the highest n), if any is placed on x axis, 
+    // if there are minor C2, one of them is placed on y axis,
+    // otherwise if there are \sigma_v, one of them is placed on y axis. 
+    // for spherical-like geometry, T-series places 3 C2 on Cartesian axes., 
+    // O-series places 3 C4 on Cartesian axes, and I-series has 15 C2, 
+    // find 3 of them orthogonal to each other, place them on Cartesian axes.
+
     // order 0 for infinity
     // quick return
     if (natoms == 0) throw std::runtime_error("Error: you should load a molecule first.");
@@ -13,7 +23,13 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
         new_coordinates.fill(0.);
         new_coordinates(coord_x, 0) = - bond_length / 2.;
         new_coordinates(coord_x, 1) = bond_length / 2.;
-        return elements[0] == elements[1] ? std::make_pair("Dinfh", 0) : std::make_pair("Cinfv", 0);
+        if (elements[0] == elements[1]) {
+            // C\infty, \infty \sigma_v, \infty C2, S\infty (including i and \sigma_h)
+            return {"Dinfh", 0};
+        } else {
+            // C\infty, \infty \sigma_v
+            return {"Cinfv", 0};
+        }
     }
 
     Eigen::MatrixXd coords_centered = coordinates.colwise() - coordinates.rowwise().mean();
@@ -126,7 +142,13 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
                 throw std::runtime_error("Error: this should never happen.");
             }
         }
-        return sym_okay ? std::make_pair("Dinfh", 0) : std::make_pair("Cinfv", 0);
+        if (sym_okay) {
+            // C\infty, \infty \sigma_v, \infty C2, S\infty (including i and \sigma_h)
+            return {"Dinfh", 0};
+        } else {
+            // C\infty, \infty \sigma_v
+            return {"Cinfv", 0};
+        }
 
     } else if (moments_of_inertia[1] - moments_of_inertia[0] <= inertia_tol && moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
         // more than one main-axes where n > 2, I_A = I_B = I_C, a.k.a. "spherical-like"
@@ -482,15 +504,30 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
             new_coordinates = coords_centered;
         }
 
+        if (major_Cn == 2) {
+            // D2d, S4
+            if (has_minor_C2) {
+                // S4(1,3), major C2=S4(2), 2 minor C2, 2 \sigma_d
+                return {"D2d", 8};
+            } else {
+                // S4(1,3), C2
+                return {"S4", 4};
+            }
+        }
+
         // find sigma_h
         coords_operated.row(coord_x) = - coords_centered.row(coord_x);
         coords_operated.bottomRows(2) = coords_centered.bottomRows(2);
         bool has_sigma_h = is_sym_okay();
 
         if (has_minor_C2) {
-            // Dn (n > 2), Dnh (n > 2), Dnd (n >= 2)
-            if (major_Cn == 2) return {"D2d", 8};
-            if (has_sigma_h) return {fmt::format("D{:d}h", major_Cn), major_Cn * 4};
+            // Dn, Dnh, Dnd for n > 2
+            if (has_sigma_h) {
+                // Cn, n C2, n \sigma_v, n (\sigma_h@Cn(1,...,n)) 
+                // the last one is (Sm(k), k is odd, m is a divisor of n, including \sigma_h=\sigma_h@Cn(n)), 
+                // for even n, i is included in above.
+                return {fmt::format("D{:d}h", major_Cn), major_Cn * 4};
+            }
             // Dn, Dnd for n > 2
             // if exists sigma_d, it divides two minor C2. one minor C2 is already on axis y.
             coords_operated.row(coord_x) = coords_centered.row(coord_x);
@@ -499,21 +536,43 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
             projection = axis_point * (axis_point.transpose() * coords_centered.bottomRows(2));
             coords_operated.bottomRows(2) = 2. * projection - coords_centered.bottomRows(2);
             bool has_sigma_d = is_sym_okay();
-            return has_sigma_d ? std::make_pair(fmt::format("D{:d}d", major_Cn), major_Cn * 4) : std::make_pair(fmt::format("D{:d}", major_Cn), major_Cn * 2);
+            if (has_sigma_d) {
+                // Cn, n C2, n \sigma_d, S{2n}(1,3,...,2n-1). for odd n there is S{2n}(n)=i
+                // we can prove that the combination of a minor C2 and its nearest clockwise \sigma_d
+                // is actually S{2n}(1), and since S{2n}(2)=Cn(1), there combinations are all S{2n}.
+                return {fmt::format("D{:d}d", major_Cn), major_Cn * 4};
+            } else {
+                // Cn, n C2
+                return {fmt::format("D{:d}", major_Cn), major_Cn * 2};
+            }
         }
 
-        // (Cn, Cnv, Cnh) for n > 2, Cni for odd i > 1, S4n for positive n
+        // (Cn, Cnv, Cnh) for n > 2, Cni for odd i > 1, S4n for n > 1
         coords_operated = - coords_centered;
         bool has_sym_center = is_sym_okay();
         // S{4n+2} = C{2n+1} + i (C{2n+1}i), S{2n+1} = C{2n+1} + sigma_h (C{2n+1}h)
         // if there is S4n, there must be C2n, and S4n does not contain i or sigma_h
         if (major_Cn % 2 != 0) {
             if (has_sym_center and has_sigma_h) throw std::runtime_error("Error: this should never happen.");
-            if (has_sym_center) return {fmt::format("C{:d}i", major_Cn), major_Cn * 2};
-            if (has_sigma_h) return {fmt::format("C{:d}h", major_Cn), major_Cn * 2}; // only odd Cnh here
+            if (has_sym_center) {
+                // Cn, (i@Cn(1,...,n))=In(k=1,3,...,2n-1)=S{2n}(mod(2k+n,2n)). i=In(n)
+                return {fmt::format("C{:d}i", major_Cn), major_Cn * 2};
+            }
+            if (has_sigma_h) {
+                // Cn, (\sigma_h@Cn(1,...,n))=Sn(k=1,3,...,2n-1)=I{2n}(mod(2k+n,2n)). \sigma_h=Sn(n)
+                return {fmt::format("C{:d}h", major_Cn), major_Cn * 2}; // only odd Cnh here
+            }
         } else {
             if (has_sigma_h) {
                 if (!has_sym_center) throw std::runtime_error("Error: this should never happen.");
+                // the symmetry elements can be written as:
+                // Cn, (\sigma_h@Cn(1,...,n)). i=\sigma_h@Cn(n/2). \sigma_h=\sigma_h@Cn(n)
+                // let g be the largest power of two that is a common devisor of n and k, 
+                // then if k/g is odd, \sigma_h@Cn(k)=S{n/g}(k/g), otherwise S{n/g}(k/g+n/g)
+                // or the symmetry elements can be written as:
+                // Cn, (i@Cn(1,...,n)). i=i@Cn(). \sigma_h=@Cn(n/2)
+                // let g be the largest power of two that is a common devisor of n and k, 
+                // then if k/g is odd, i@Cn(k)=I{n/g}(k/g), otherwise I{n/g}(k/g+n/g)
                 return {fmt::format("C{:d}h", major_Cn), major_Cn * 2}; // only even Cnh here
             }
             // if major_Cn is n, then the maximum S, if any, must be S{2n} or Sn.
@@ -527,7 +586,7 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
             coords_operated.row(coord_x) = - coords_centered.row(coord_x);
             bool has_Sn = is_sym_okay();
             if (has_Sn) {
-                if (S_order % 4 != 0) throw std::runtime_error("Error: this should never happen.");
+                // S{n}(k) for odd 1<=k<n, C{n/2}(k) for 1<=k<= n/2
                 return {fmt::format("S{:d}", S_order), S_order};
             }
         }
@@ -583,8 +642,10 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
             rot_mat << mirror_point[0], mirror_point[1], - mirror_point[1], mirror_point[0];
             coords_centered.bottomRows(2) = rot_mat * coords_centered.bottomRows(2);
             new_coordinates = coords_centered;
+            // Cn, n \sigma_v
             return {fmt::format("C{:d}v", major_Cn), major_Cn * 2};
         } else {
+            // Cn
             return {fmt::format("C{:d}", major_Cn), major_Cn};
         }
 
@@ -616,7 +677,13 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
             coords_operated.row(coord_x) =   coords_centered.row(coord_x);
             coords_operated.row(coord_z) = - coords_centered.row(coord_z);
             has_xOy_mirror = is_sym_okay();
-            return has_xOy_mirror && has_yOz_mirror && has_zOx_mirror ? std::make_pair("D2h", 8) : std::make_pair("D2", 4);
+            if (has_xOy_mirror && has_yOz_mirror && has_zOx_mirror) {
+                // 3 C2, 3 \sigma_h, i
+                return {"D2h", 8};
+            } else {
+                // 3 C2
+                return {"D2", 4};
+            }
         }
 
         // C2, C2h, C2v, C1, Ci, Cs
@@ -641,12 +708,21 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
             coords_operated.row(coord_y) =   coords_centered.row(coord_y);
             coords_operated.row(coord_z) =   coords_centered.row(coord_z);
             has_yOz_mirror = is_sym_okay();
-            if (has_yOz_mirror) return {"C2h", 4};
+            if (has_yOz_mirror) {
+                // C2, \sigma_h, i
+                return {"C2h", 4};
+            }
             // C2, C2v
             coords_operated.row(coord_x) =   coords_centered.row(coord_x);
             coords_operated.row(coord_z) = - coords_centered.row(coord_z);
             has_xOy_mirror = is_sym_okay();
-            return has_xOy_mirror ? std::make_pair("C2v", 4) : std::make_pair("C2", 2);
+            if (has_xOy_mirror) {
+                // C2, 2 \sigma_v
+                return {"C2v", 4};
+            } else {
+                // C2
+                return {"C2", 2};
+            }
         }
 
         // C1, Ci, Cs
@@ -660,13 +736,22 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
         coords_operated.row(coord_x) =   coords_centered.row(coord_x);
         coords_operated.row(coord_z) = - coords_centered.row(coord_z);
         has_xOy_mirror = is_sym_okay();
-        if (has_xOy_mirror || has_yOz_mirror || has_zOx_mirror) return {"Cs", 2};
+        if (has_xOy_mirror || has_yOz_mirror || has_zOx_mirror) {
+            // \sigma
+            return {"Cs", 2};
+        }
 
         // C1, Ci
         coords_operated.row(coord_x) = - coords_centered.row(coord_x);
         coords_operated.row(coord_y) = - coords_centered.row(coord_y);
         has_sym_center = is_sym_okay();
-        return has_sym_center ? std::make_pair("Ci", 2) : std::make_pair("C1", 1);
+        if (has_sym_center) {
+            // i
+            return {"Ci", 2};
+        } else {
+            // nothing except E
+            return {"C1", 1};
+        }
     }
 
     return {"undetected.", 1};
