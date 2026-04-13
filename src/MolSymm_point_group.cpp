@@ -43,14 +43,17 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
           - coords_centered.col(iatom) * coords_centered.col(iatom).transpose());
     }
 
+    const double inertia_tol = tol * 2. * coords_centered.colwise().norm() * atomic_weights;
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eigen_solver(moments_of_inertia_tensor);
     Eigen::Vector3d moments_of_inertia = eigen_solver.eigenvalues();
     Eigen::Matrix3d principal_axes = eigen_solver.eigenvectors();
     if (principal_axes.determinant() < 0.) principal_axes.col(0) = - principal_axes.col(0);
-    coords_centered = principal_axes.transpose() * coords_centered; // rotate principal axes to x y z
+    if (((moments_of_inertia_tensor - moments_of_inertia_tensor.diagonal().asDiagonal().toDenseMatrix()).array().abs() > inertia_tol).any()) {
+        coords_centered = principal_axes.transpose() * coords_centered; // rotate principal axes to x y z
+    }
     new_coordinates = coords_centered;
 
-    // detect SEA
+    // detect SEA (symmetry equavalent atoms)
     Eigen::MatrixXi atomic_numbers_to_compare = atomic_numbers.replicate(1, natoms);
 
     Eigen::MatrixXd distance_to_compare;
@@ -114,7 +117,6 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
         return sym_okay;
     };
 
-    const double inertia_tol = tol * 2. * coords_centered.colwise().norm() * atomic_weights;
     if (moments_of_inertia[0] <= inertia_tol && moments_of_inertia[2] - moments_of_inertia[1] <= inertia_tol) {
         // linear, I_A = 0, I_B = I_C
         // fmt::print("{:s}\n", "linear");
@@ -164,6 +166,13 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
             // (1-\cos\theta)n_yn_x+\sin\theta n_z & \cos\theta + (1-\cos\theta){n_y}^2 & (1-\cos\theta)n_yn_z-\sin\theta n_x \\
             // (1-\cos\theta)n_zn_x-\sin\theta n_y & (1-\cos\theta)n_zn_y+\sin\theta n_x & \cos\theta + (1-\cos\theta){n_z}^2 \\
             // \end{bmatrix}
+            // Rodrigues' rotation formula:
+            // R = I - K(n)\sin\theta + (1-\cos\theta)(nn^\top-I), where K(n) is the asymmetrical cross matrix:
+            // K(n) = \begin{bmatrix}
+            // 0 & - n_z & n_y \\
+            // n_z & 0 & - n_x \\
+            // - n_y & n_x & 0 \\
+            // \end{bmatrix}
             Eigen::Matrix3d rot_mat = 2. * axis * axis.transpose() - Eigen::Matrix3d::Identity();
             coords_operated = rot_mat * coords_centered;
         };
@@ -183,8 +192,9 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
         std::function<void(const Eigen::Vector3d&)> flip_against_plane = 
         [&coords_centered, &coords_operated](const Eigen::Vector3d& normal_axis) {
             // assume normal_axis is already normalized
-            Eigen::MatrixXd projection = normal_axis * (normal_axis.transpose() * coords_centered);
-            coords_operated = coords_centered - 2. * projection;
+            // \sigma_"h" = i @ C2
+            Eigen::Matrix3d flip_mat = Eigen::Matrix3d::Identity() - 2. * normal_axis * normal_axis.transpose();
+            coords_operated = flip_mat * coords_centered;
         };
 
         std::function<void(const Eigen::Vector3d&, int, int)> rotate_around_axis = 
@@ -272,6 +282,7 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
             // T, Td, Th
             flip_against_plane(all_C2.col(0));
             bool has_sigma_h = is_sym_okay();
+            // since two C2 are orthogonal, if there is a \sigma_d divides them, there must be another perpendicular to that.
             Eigen::Vector3d mirror_point = (all_C2.col(0) + all_C2.col(1)) / M_SQRT2;
             flip_against_plane(mirror_point);
             bool has_sigma_d = is_sym_okay();
@@ -380,9 +391,9 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
             // each C5 passes through centers of two opposite pentagons.
             // each C3 passes through centers of two opposite hexagons.
             // each C2 passes through the midpoints of two opposite common edges between a hexagonal rings and its adjacent hexagonal rings.
-            // let \phi=\frac{\sqrt{5}+1}{2}, \varphi=\frac{\sqrt{5}-1}{2}
+            // let \phi=\frac{\sqrt{5}+1}{2}
             // aligned coordinates:
-            // 15 C2(1) : x, y, z axes, [1, \pm\phi, \pm\varphi] / 2 and their cyclic permutations
+            // 15 C2(1) : x, y, z axes, [1, \pm\phi, \pm(1-\phi)] / 2 and their cyclic permutations
             // 10 C3(1,2) : [1, \pm(1+\phi), 0] / sqrt(3\phi+3) and their cyclic permutations and [1, \pm1, \pm1] / sqrt(3)
             // 6  C5(1,2,3,4) : [1, 0, \pm\phi] / sqrt(\phi+2) and theri cyclic permutations
             // i                            (Ih)
@@ -575,12 +586,10 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
                 // then if k/g is odd, i@Cn(k)=I{n/g}(k/g), otherwise I{n/g}(k/g+n/g)
                 return {fmt::format("C{:d}h", major_Cn), major_Cn * 2}; // only even Cnh here
             }
-            // if major_Cn is n, then the maximum S, if any, must be S{2n} or Sn.
-            // if major_Cn is even, then if the maximum S is Sn, then:
-            // 1. if n = 4k, then S{4k} only has C{2k}, this is a paradox.
-            // 2. if n = 4k+2, then S{4k+2} = C{2k+1} + i, however C{4k+2} has C2, and C2 + i generates sigma_h, 
-            // but C{even} + sigma_h has been discussed above, hence here we only need to check S{2n}, and since 
-            // n is even here, that is a S{4m} point group if there is S{2n}.
+            // if major_Cn is odd, then Sn(n)=\sigma_h, there must be \sigma_h
+            // if major_Cn is an odd multiple of two, then Sn(n/2)=\sigma_d@C2=i, there must be i
+            // in other words, if there is Sm but neigher \sigma_h nor i, m must be a multiple of 4, 
+            // and in this case the maximum rotation axis of Sm is C{m/2}, hence only needs to test C{2n}.
             const int S_order = major_Cn * 2;
             rotate_around_x_by_n(S_order);
             coords_operated.row(coord_x) = - coords_centered.row(coord_x);
