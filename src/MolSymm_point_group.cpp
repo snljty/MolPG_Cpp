@@ -662,7 +662,8 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
         // asymmetric, I_A \ne I_B \ne I_C
         // D2, D2h, C2, C2h, C2v, C1, Ci, Cs
         // fmt::print("{:s}\n", "asymmetric");
-        bool has_x_C2, has_y_C2, has_z_C2, has_xOy_mirror, has_yOz_mirror, has_zOx_mirror, has_sym_center;
+        bool has_x_C2 = false, has_y_C2 = false, has_z_C2 = false, \
+            has_xOy_mirror = false, has_yOz_mirror = false, has_zOx_mirror = false, has_sym_center = false;
 
         coords_operated.row(coord_x) =   coords_centered.row(coord_x);
         coords_operated.row(coord_y) = - coords_centered.row(coord_y);
