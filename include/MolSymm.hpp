@@ -2,6 +2,13 @@
 #ifndef __MOL_SYMM_HPP__
 #define __MOL_SYMM_HPP__
 
+/*
+This program written in C++ is aiming to
+determine the point group of a molecule.
+
+It reads a structure from a gjf or xyz file.
+*/
+
 #include <iostream>
 #include <fstream>
 #include <sstream>

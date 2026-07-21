@@ -53,7 +53,7 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
     }
     new_coordinates = coords_centered;
 
-    // detect SEA (symmetry equavalent atoms)
+    // detect SEA (symmetry equivalent atoms)
     Eigen::MatrixXi atomic_numbers_to_compare = atomic_numbers.replicate(1, natoms);
 
     Eigen::MatrixXd distance_to_compare;
@@ -78,7 +78,7 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
     }
 
     std::vector<bool> touched(natoms, false);
-    std::vector<std::vector<int> > SEAs; // symmetry equavalent atoms
+    std::vector<std::vector<int> > SEAs; // symmetry equivalent atoms
     for (int iatom = 0; iatom < natoms; ++ iatom) {
         if (touched[iatom]) continue;
         touched[iatom] = true;
@@ -395,7 +395,7 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
             // aligned coordinates:
             // 15 C2(1) : x, y, z axes, [1, \pm\phi, \pm(1-\phi)] / 2 and their cyclic permutations
             // 10 C3(1,2) : [1, \pm(1+\phi), 0] / sqrt(3\phi+3) and their cyclic permutations and [1, \pm1, \pm1] / sqrt(3)
-            // 6  C5(1,2,3,4) : [1, 0, \pm\phi] / sqrt(\phi+2) and theri cyclic permutations
+            // 6  C5(1,2,3,4) : [1, 0, \pm\phi] / sqrt(\phi+2) and their cyclic permutations
             // i                            (Ih)
             // 6 S10(1,3,7,9) = I5(7,1,9,3) (Ih) : superposition with C5
             // 10 S6(1,5) = I3(1,5)         (Ih) : superposition with C3
@@ -578,11 +578,11 @@ std::pair<std::string, int> Molecule::detect_point_group(double tol) const {
                 if (!has_sym_center) throw std::runtime_error("Error: this should never happen.");
                 // the symmetry elements can be written as:
                 // Cn, (\sigma_h@Cn(1,...,n)). i=\sigma_h@Cn(n/2). \sigma_h=\sigma_h@Cn(n)
-                // let g be the largest power of two that is a common devisor of n and k, 
+                // let g be the largest power of two that is a common divisor of n and k, 
                 // then if k/g is odd, \sigma_h@Cn(k)=S{n/g}(k/g), otherwise S{n/g}(k/g+n/g)
                 // or the symmetry elements can be written as:
                 // Cn, (i@Cn(1,...,n)). i=i@Cn(). \sigma_h=@Cn(n/2)
-                // let g be the largest power of two that is a common devisor of n and k, 
+                // let g be the largest power of two that is a common divisor of n and k, 
                 // then if k/g is odd, i@Cn(k)=I{n/g}(k/g), otherwise I{n/g}(k/g+n/g)
                 return {fmt::format("C{:d}h", major_Cn), major_Cn * 2}; // only even Cnh here
             }
