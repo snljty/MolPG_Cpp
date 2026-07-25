@@ -202,7 +202,7 @@ std::string Molecule::detect_point_group(double tol) const {
         }
 
         // second, check C2 through each atom
-        for (int iatom = 0; iatom > natoms; ++ iatom) {
+        for (int iatom = 0; iatom < natoms; ++ iatom) {
             axis_point_norm = coords_centered.col(iatom).norm();
             if (axis_point_norm <= tol) continue;
             axis_point = coords_centered.col(iatom) / axis_point_norm;
